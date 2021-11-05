@@ -1,0 +1,169 @@
+---
+title: "Practical Machine Learning Course Project"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+This is a writeup for the Johns Hopkins University Practical ML course project in Coursera.
+
+Work done by Xue Wen
+
+##1.Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement ??? a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases. 
+
+1. Your submission should consist of a link to a Github repo with your R markdown and compiled HTML file describing your analysis. Please constrain the text of the writeup to < 2000 words and the number of figures to be less than 5. It will make it easier for the graders if you submit a repo with a gh-pages branch so the HTML page can be viewed online (and you always want to make it easy on graders :-).
+2. You should also apply your machine learning algorithm to the 20 test cases available in the test data above. Please submit your predictions in appropriate format to the programming assignment for automated grading. See the programming assignment for additional details. 
+
+###Cross-Validation
+The cross-validation in this project is performed by subsampling the training data set into 2 samples: MyTraining (60%) and MyTesting (40%). The classifier will be fitted on to the MyTraining dataset which will also be testing on MyTesting dataset.
+
+###How the model was built
+The model will be predicting the variable: "classes" which has a factor of 5 levels (A,B,C,D,E)
+Step by step:
+1. Setting up libraries
+2. Retrieving Data
+3. Cleaning Data
+4. Partitioning Data
+5. Prediction
+6. Choose the best algorithm
+7. Test on the "real" test set.
+
+###Expected out-of-sample error
+Out of sample error is the error rate we get on a new data set which is also the generalization error. The expected out-of-sample error will be the expected number of missclassified observations in the test data set. The reason is because our model might be overfitting to the training data. One way to reduce such cases is by regularization.
+
+##2.Reproducibility
+
+1. Required packages: caret, rpart, rpart.plot, RColorBrewer, rattle, randomForest
+
+2. Set Seed "12345"
+
+###Loading all the neccessary libraries
+```{r}
+set.seed("12345")
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+library(RColorBrewer)
+```
+
+##3.Retrieving Data
+
+Make sure the csv is in the working directory
+
+```{r}
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+```
+
+##4.Cleaning Data
+###Near Zero Variance Variables Removal
+Firstly, before we begin, we will remove near zero variance variables, because these variables will not contribute significantly to our predictions.
+
+```{r}
+nzv <- nearZeroVar(training, saveMetrics = TRUE)
+UndesiredCol <- c(names(training[,nzv$nzv==TRUE]))
+training <- training[,nzv$nzv==FALSE]
+```
+
+Next, we need to remove the ID column as it is irrelevant also
+```{r}
+#add the ID col to UndesiredCol as well 
+UndesiredCol <- c(UndesiredCol,names(training[1]))
+training <- training[c(-1)]
+```
+###Variables with too many NAs Removal (more than 60%)
+```{r}
+nav <- sapply(colnames(training),function(x) {
+  if(sum(is.na(training[,x])) > 0.6 * nrow(training)) {
+    return(T)} else {return(F)}
+  } )
+training <- training[, !nav]
+dim(training)
+```
+
+###Do the same cleaning for testing dataset
+```{r}
+testing <- testing[,nzv$nzv==FALSE]
+testing <- testing[c(-1)]
+testing <- testing[, !nav]
+#Need to remove the problem ID also
+testing <- testing[c(-58)]
+dim(testing)
+```
+##5.Split Training Data into 2 sets
+
+Now we are ready to split the data into 60% for training and 40% for testing:
+
+```{r}
+inTrain <- createDataPartition(training$classe,p=0.6,list=FALSE)
+MyTraining <- training[inTrain,]
+MyTesting <- training[-inTrain,]
+dim(MyTraining)
+dim(MyTesting)
+```
+##6. Predictive Models
+
+###6.1. Decision Tree
+Call the decision tree classifier:
+```{r}
+DTModel <- rpart(classe~., data=MyTraining, method = "class")
+
+#visualising the decision tree
+fancyRpartPlot(DTModel)
+```
+Prediction:
+
+```{r}
+DTPred <- predict(DTModel, MyTesting, type = "class")
+```
+Using confusion matrix to evaluate result:
+```{r}
+confusionMatrix(DTPred,MyTesting$classe)
+```
+
+###6.2. Random Forests
+Call the random forests classifier:
+```{r}
+RFModel <- randomForest(classe~. , data=MyTraining)
+```
+Prediction:
+```{r}
+RFPred <- predict(RFModel, MyTesting, type = "class")
+```
+Using confusion matrix to evaluate result:
+```{r}
+confusionMatrix(RFPred,MyTesting$classe)
+```
+
+##Conclusion
+
+As we can see from the result, the random forests yields a better result than the decision tree with nearly 100% (99.8%) compare to 88%. The random forest model will be choosen to evaluate the real testing dataset. 
+Exaplanation: The random forest is a collection of decision trees combined to give one result. Random forest gives a better result because of its ability to limit overfitting and it is able to suppress error due to bias. 
+
+##Predicting Class for the testing dataset
+```{r}
+for(i in 1:(length(testing)-1)) {
+  levels(testing[[i]]) <- levels(MyTraining[[i]])
+}
+RFPredReal <- predict(RFModel,testing, type = "class")
+RFPredReal
+```
+
+Function to generate files with predictions to submit:
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files('Prediction/RFPredRea')
+```
